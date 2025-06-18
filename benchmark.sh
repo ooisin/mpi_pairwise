@@ -37,6 +37,12 @@ run_benchmark() {
     local seq_time=$(grep "Sequential computation time:" "$temp_output" | awk '{print $4}')
     local par_time=$(grep "Computation time:" "$temp_output" | tail -1 | awk '{print $3}')
     
+    # Extract verification status
+    local verified=$(grep "Verification:" "$temp_output" | awk '{print $2}')
+    if [[ -z "$verified" ]]; then
+        verified="N/A" # Doesnt verify when single proc
+    fi
+    
     # speedup
     local speedup
     if (( $(echo "$par_time > 0" | bc -l) )); then
@@ -44,8 +50,6 @@ run_benchmark() {
     else
         speedup="N/A"
     fi
-    
-    # TODO: Print a pass status from program on sequential verification
 
     # Log results to CSV
     echo "$datatype,$matrix_size,$num_procs,$seq_time,$par_time,$speedup,$verified" >> "$CSV_FILE"
