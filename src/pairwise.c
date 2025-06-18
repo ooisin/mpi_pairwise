@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 /**
  * Determines block size/width (number of columns) and handles the imperfect
@@ -15,7 +16,6 @@
  */
 void calculate_block_size(int M, int size, int rank, int* block_size, int* offset)
 {
-        // TODO: Check when p = 1
         int base = M / size;
         int remainder = M % size;
 
@@ -47,6 +47,7 @@ void compute_dot_product(void** A_local, void** A_received, void** C_local, int 
                 int temp_remote_rows;
                 calculate_block_size(M, size, remote_rank, &temp_remote_rows, &remote_offset);
 
+                // TODO: Reorder loops
                 // Process only upper triangle elements - avoid redundant symmetrical comps
                 for (int i = 0; i < local_block_rows; i++) {
                         int global_i = local_offset + i;
@@ -208,10 +209,8 @@ void sequential_dotprod(void** A, void** C, int rows, int cols, DataType type)
                                         A_k += A_mat[i][k] * A_mat[j][k];
                                 }
                                 
-                                // Store in both positions by symmetry
                                 double sum = A_k + A_k1 + A_k2 + A_k3;
                                 C_mat[i][j] = sum;
-                                C_mat[j][i] = sum;
                         }
                 }
         } else if (type == FLOAT_TYPE) {
@@ -251,6 +250,33 @@ void sequential_dotprod(void** A, void** C, int rows, int cols, DataType type)
         }
 }
 
+// Result comparison routine
+bool verify_results(void** sequential, void** parallel, int M, DataType type, double eps)
+{
+        if (type == DOUBLE_TYPE) {
+                double** seq = (double**)sequential;
+                double** par = (double**)parallel;
+                for (int i = 0; i < M; i++) {
+                        for (int j = 0; j < M; j++) {
+                                if (fabs(seq[i][j] - par[i][j]) > eps) {
+                                        return false;
+                                }
+                        }
+                }
+        } else {
+                float** seq = (float**)sequential;
+                float** par = (float**)parallel;
+                for (int i = 0; i < M; i++) {
+                        for (int j = 0; j < M; j++) {
+                                if (fabsf(seq[i][j] - par[i][j]) > eps) {
+                                        return false;
+                                }
+                        }
+                }
+        }
+        return true;
+}
+
 int main(int argc, char** argv)
 {
         // N rows, M cols input
@@ -265,7 +291,7 @@ int main(int argc, char** argv)
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
         master = rank == 0;
-        multi_proc = size > 0;
+        multi_proc = size > 1;
 
         int validation = validate_input_args(argc - 1, argv + 1, &M, &N, &type);
         if (validation != EXIT_SUCCESS) {
@@ -355,8 +381,21 @@ int main(int argc, char** argv)
 
         if (master) {
                 printf("Computation time: %f seconds\n", end_time - start_time);
+                
+                // Result comparison in multiprocess mode
+                if (multi_proc) {
+                        void** T = alloc_matrix(M, M, elem_size, elem_size);
+                        sequential_dotprod(A, T, M, N, type);
+                        
+                        double epsilon = (type == FLOAT_TYPE) ? 1e-6 : 1e-8;
+                        bool verified = verify_results(T, C, M, type, epsilon);
+                        
+                        printf("Verification: %s\n", verified ? "PASSED" : "FAILED");
+                        free(T);
+                }
+
                 //printf("Result matrix C:\n");
-                print_matrix(C, M, M, type);
+                //print_matrix(C, M, M, type);
 
                 free(A);
                 free(C);
