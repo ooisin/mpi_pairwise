@@ -27,7 +27,7 @@ run_benchmark() {
     local temp_seq_output=$(mktemp)
     
     # Run MPI
-    if ! mpirun -np "$num_procs" ./pairwise "$matrix_size" "$matrix_size" "$datatype" > "$temp_output" 2>&1; then
+    if ! mpirun -np "$num_procs" --oversubscribe ./pairwise "$matrix_size" "$matrix_size" "$datatype" > "$temp_output" 2>&1; then
         echo "ERROR: MPI run failed for $datatype ${matrix_size}x${matrix_size} with $num_procs processes"
         rm -f "$temp_output" "$temp_seq_output"
         return 1

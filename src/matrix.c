@@ -77,13 +77,13 @@ void print_matrix(void** mat, size_t rows, size_t cols, DataType type)
                 if (type == FLOAT_TYPE) {
                         float* row = mat[i];
                         for (size_t j = 0; j < cols; j++) {
-                                printf("%-5.4f ", row[j]);
+                                printf("%-7.2f ", row[j]);
                         }
 
                 } else {
                         double* row = mat[i];
                         for (size_t j = 0; j < cols; j++) {
-                                printf("%-5.4lf ", row[j]);
+                                printf("%-7.2lf ", row[j]);
                         }
                 }
                 printf("\n");

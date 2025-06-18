@@ -60,29 +60,30 @@ void compute_dot_product(void** A_local, void** A_received, void** C_local, int 
                                 }
 
                                 // 4-way loop unrolling for dot product computation
-                                double sum1 = 0.0, sum2 = 0.0, sum3 = 0.0, sum4 = 0.0;
+                                double A_k = 0.0;
+                                double A_k1 = 0.0;
+                                double A_k2 = 0.0;
+                                double A_k3 = 0.0;
+
                                 int k;
 
                                 // Row-based access: A_loc[i][k] gives element k of vector i
-                                // This computes dot product between row i and row j
+                                // This computes dot product between row i,j
                                 for (k = 0; k < N - 3; k += 4) {
-                                        sum1 += A_loc[i][k] * A_rec[j][k];
-                                        sum2 += A_loc[i][k + 1] * A_rec[j][k + 1];
-                                        sum3 += A_loc[i][k + 2] * A_rec[j][k + 2];
-                                        sum4 += A_loc[i][k + 3] * A_rec[j][k + 3];
+                                        A_k += A_loc[i][k] * A_rec[j][k];
+                                        A_k1 += A_loc[i][k + 1] * A_rec[j][k + 1];
+                                        A_k2 += A_loc[i][k + 2] * A_rec[j][k + 2];
+                                        A_k3 += A_loc[i][k + 3] * A_rec[j][k + 3];
                                 }
 
                                 // Handle remaining elements
                                 for (; k < N; k++) {
-                                        sum1 += A_loc[i][k] * A_rec[j][k];
+                                        A_k += A_loc[i][k] * A_rec[j][k];
                                 }
 
                                 // Store result in appropriate position of Gram matrix
-                                // Map global column index to local column index
-                                int local_j = global_j - local_offset;
-                                if (local_j >= 0 && local_j < local_block_rows) {
-                                        C_loc[i][local_j] = sum1 + sum2 + sum3 + sum4;
-                                }
+                                double sum = A_k + A_k1 + A_k2 + A_k3;
+                                C_loc[i][global_j] = sum;
                         }
                 }
         } else if (dtype == MPI_FLOAT) {
@@ -122,11 +123,8 @@ void compute_dot_product(void** A_local, void** A_received, void** C_local, int 
                                         sum1 += A_loc[i][k] * A_rec[j][k];
                                 }
 
-                                // Map global column index to local column index
-                                int local_j = global_j - local_offset;
-                                if (local_j >= 0 && local_j < local_block_rows) {
-                                        C_loc[i][local_j] = sum1 + sum2 + sum3 + sum4;
-                                }
+                                float sum = sum1 + sum2 + sum3 + sum4;
+                                C_loc[i][global_j] = sum;
                         }
                 }
         }
@@ -180,23 +178,38 @@ void ring_pairwise(void** A_loc, void** C_loc, int N, int M, int rank, int size,
         free(recv_buf);
 }
 
-void sequential_dotprod(void** A, void** C, int M, int N, DataType type)
+void sequential_dotprod(void** A, void** C, int rows, int cols, DataType type)
 {
         if (type == DOUBLE_TYPE) {
                 double** A_mat = (double**)A;
                 double** C_mat = (double**)C;
                 
-                // Compute Gram matrix C = A * A^T
-                for (int i = 0; i < M; i++) {
-                        for (int j = 0; j <= i; j++) {  // Only compute upper triangle (including diagonal)
-                                double sum = 0.0;
+                // Compute result mat C 
+                for (int i = 0; i < rows; i++) {
+                        // Only compute upper triangle
+                        for (int j = 0; j <= i; j++) {  
+                                double A_k = 0.0;
+                                double A_k1 = 0.0;
+                                double A_k2 = 0.0;
+                                double A_k3 = 0.0;
+
+                                int k;
                                 
-                                // Dot product of row i and row j
-                                for (int k = 0; k < N; k++) {
-                                        sum += A_mat[i][k] * A_mat[j][k];
+                                // Dot product of row i,j
+                                for (k = 0; k < cols - 3; k += 4){
+                                        A_k += A_mat[i][k] * A_mat[j][k];
+                                        A_k1 += A_mat[i][k + 1] * A_mat[j][k + 1];
+                                        A_k2 += A_mat[i][k + 2] * A_mat[j][k + 2];
+                                        A_k3 += A_mat[i][k + 3] * A_mat[j][k + 3];
                                 }
                                 
-                                // Store in both positions due to symmetry
+                                // Handle remaining elements
+                                for (; k < cols; k++) {
+                                        A_k += A_mat[i][k] * A_mat[j][k];
+                                }
+                                
+                                // Store in both positions by symmetry
+                                double sum = A_k + A_k1 + A_k2 + A_k3;
                                 C_mat[i][j] = sum;
                                 C_mat[j][i] = sum;
                         }
@@ -205,17 +218,32 @@ void sequential_dotprod(void** A, void** C, int M, int N, DataType type)
                 float** A_mat = (float**)A;
                 float** C_mat = (float**)C;
                 
-                // Compute Gram matrix C = A * A^T
-                for (int i = 0; i < M; i++) {
-                        for (int j = 0; j <= i; j++) {  // Only compute upper triangle (including diagonal)
-                                float sum = 0.0f;
+                // Same implementation as double type
+                for (int i = 0; i < rows; i++) {
+                        // Only compute upper triangle
+                        for (int j = 0; j <= i; j++) {  
+                                float A_k = 0.0;
+                                float A_k1 = 0.0;
+                                float A_k2 = 0.0;
+                                float A_k3 = 0.0;
+
+                                int k;
                                 
-                                // Dot product of row i and row j
-                                for (int k = 0; k < N; k++) {
-                                        sum += A_mat[i][k] * A_mat[j][k];
+                                // Dot product of row i,j
+                                for (k = 0; k < cols - 3; k += 4){
+                                        A_k += A_mat[i][k] * A_mat[j][k];
+                                        A_k1 += A_mat[i][k + 1] * A_mat[j][k + 1];
+                                        A_k2 += A_mat[i][k + 2] * A_mat[j][k + 2];
+                                        A_k3 += A_mat[i][k + 3] * A_mat[j][k + 3];
                                 }
                                 
-                                // Store in both positions due to symmetry
+                                // Handle remaining elements
+                                for (; k < cols; k++) {
+                                        A_k += A_mat[i][k] * A_mat[j][k];
+                                }
+                                
+                                // Store in both positions by symmetry
+                                float sum = A_k + A_k1 + A_k2 + A_k3;
                                 C_mat[i][j] = sum;
                                 C_mat[j][i] = sum;
                         }
@@ -228,14 +256,16 @@ int main(int argc, char** argv)
         // N rows, M cols input
         // Implicit transpose as alloc is row major so M rows & N cols
         int rank, size;
-        bool master;
+        bool master, multi_proc;
         int M, N;
         DataType type;
 
         MPI_Init(&argc, &argv);
         MPI_Comm_size(MPI_COMM_WORLD, &size);
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
         master = rank == 0;
+        multi_proc = size > 0;
 
         int validation = validate_input_args(argc - 1, argv + 1, &M, &N, &type);
         if (validation != EXIT_SUCCESS) {
@@ -256,7 +286,7 @@ int main(int argc, char** argv)
 
         // Result matrices
         void** C = NULL;
-        void** C_loc = alloc_matrix(local_block, local_block, elem_size, elem_size);
+        void** C_loc = alloc_matrix(local_block, M, elem_size, elem_size);
 
         // params for scatter and gather
         int* send_counts = NULL;
@@ -267,15 +297,18 @@ int main(int argc, char** argv)
                 A = alloc_matrix(M, N, elem_size, elem_size);
                 C = alloc_matrix(M, M, elem_size, elem_size);
                 void** T = alloc_matrix(M, M, elem_size, elem_size);
-                init_custom_matrix(A, M, N, type);
+                init_matrix(A, M, N, type);
 
                 printf("M=%d, N=%d\n", M, N);
                 printf("Matrix A - vectors as rows:\n");
-                print_matrix(A, M, N, type);
+                //print_matrix(A, M, N, type);
                 
-                printf("Sequential:\n");
+
+                double seq_start = MPI_Wtime();
                 sequential_dotprod(A, T, M, N, type);
-                print_matrix(T, M, M, type);
+                double seq_end = MPI_Wtime();
+                printf("Sequential computation time: %f seconds\n", seq_end - seq_start);
+                //print_matrix(T, M, M, type);
 
                 // Scatterv params
                 send_counts = malloc(size * sizeof(int));
@@ -310,19 +343,19 @@ int main(int argc, char** argv)
                 for (int i = 0; i < size; i++) {
                         int block, offset;
                         calculate_block_size(M, size, i, &block, &offset);
-                        recv_counts[i] = block * block; // Each process contributes block x block elements
+                        recv_counts[i] = block * M; // Each process contributes block x M elements
                         recv_displs[i] = total_offset;
-                        total_offset += block * block;
+                        total_offset += block * M;
                 }
         }
 
         void* gather_send_data = C_loc[0];
         void* gather_recv_data = master ? C[0] : NULL;
-        MPI_Gatherv(gather_send_data, local_block * local_block, mpi_type, gather_recv_data, recv_counts, recv_displs, mpi_type, 0, MPI_COMM_WORLD);
+        MPI_Gatherv(gather_send_data, local_block * M, mpi_type, gather_recv_data, recv_counts, recv_displs, mpi_type, 0, MPI_COMM_WORLD);
 
         if (master) {
                 printf("Computation time: %f seconds\n", end_time - start_time);
-                printf("Result matrix C:\n");
+                //printf("Result matrix C:\n");
                 print_matrix(C, M, M, type);
 
                 free(A);
