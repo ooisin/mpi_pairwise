@@ -1,5 +1,5 @@
 CC = mpicc
-CFLAGS = -Wall -Wextra -std=c99 -g
+CFLAGS = -Wall -Wextra -std=c99 -O2 
 SRCDIR = src
 TARGET = pairwise
 

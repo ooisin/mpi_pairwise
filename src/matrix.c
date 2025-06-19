@@ -2,13 +2,15 @@
 #include "validate.h"
 #include <stdio.h>
 
+// Utility helper to align mem addresses to given boundary -> used in header calculation for allocating matrix memory
 static size_t align_up(size_t value, size_t alignment)
 {
         return ((value + alignment - 1) / alignment) * alignment;
 }
 
-/* The matrix memory allocation follows the efficient 2D array allocation method
- * described by Paul Lucas, 2023, Article available:
+/*
+ * The matrix memory allocation follows the efficient 2D array allocation method which creates both the row pointers and
+ * storage in one single allocation described by Paul Lucas, 2023, Article available:
  * https://medium.com/@pauljlucas/dynamically-allocating-2d-arrays-efficiently-and-correctly-in-c-1b35384e87bf
  */
 void** alloc_matrix(size_t rows, size_t cols, size_t type_size, size_t type_align)
@@ -28,6 +30,7 @@ void** alloc_matrix(size_t rows, size_t cols, size_t type_size, size_t type_alig
         return row_ptrs;
 }
 
+// Initialise matrix with random vals between 0 and 1 using seed for reproducibilty
 void init_matrix(void** mat, size_t rows, size_t cols, DataType type)
 {
         srand(9730);
@@ -50,27 +53,7 @@ void init_matrix(void** mat, size_t rows, size_t cols, DataType type)
         return;
 }
 
-void init_custom_matrix(void** mat, size_t rows, size_t cols, DataType type)
-{
-        if (type == FLOAT_TYPE) {
-                float** matrix = (float**)mat;
-                float value = 1.0f;
-                for (size_t i = 0; i < rows; i++) {
-                        for (size_t j = 0; j < cols; j++) {
-                                matrix[i][j] = value++;
-                        }
-                }
-        } else if (type == DOUBLE_TYPE) {
-                double** matrix = (double**)mat;
-                double value = 1.0;
-                for (size_t i = 0; i < rows; i++) {
-                        for (size_t j = 0; j < cols; j++) {
-                                matrix[i][j] = value++;
-                        }
-                }
-        }
-}
-
+// Prints a formatted matrix to stdout - useful for small matrix debugging and informal verifcation checks
 void print_matrix(void** mat, size_t rows, size_t cols, DataType type)
 {
         for (size_t i = 0; i < rows; i++) {

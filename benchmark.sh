@@ -2,14 +2,18 @@
 
 set -e
 
-# results dir
-RESULTS_DIR="benchmark_results"
-CSV_FILE="$RESULTS_DIR/benchmark_results.csv"
+# test mode parameter
+TEST_MODE=false
+if [[ "$1" == "test" ]]; then
+    TEST_MODE=true
+    echo "Running in TEST MODE: A=1024x1024 float with p=2,4,8,16"
+fi
 
-mkdir -p "$RESULTS_DIR"
+# CSV file in current directory
+CSV_FILE="benchmark_results.csv"
 
 # Init the result CSV headers
-echo "DataType,MatrixSize,Processes,SequentialTime,ParallelTime,Speedup,Verified" > "$CSV_FILE"
+echo "DataType,MatrixSize,Processes,SequentialTime,ParallelTime,Speedup,Efficiency,PeakMemoryMB,Verified" > "$CSV_FILE"
 
 make clean
 make
@@ -35,7 +39,18 @@ run_benchmark() {
     
     # Extract timing information
     local seq_time=$(grep "Sequential computation time:" "$temp_output" | awk '{print $4}')
-    local par_time=$(grep "Computation time:" "$temp_output" | tail -1 | awk '{print $3}')
+    local par_time=$(grep "Parallel computation time:" "$temp_output" | awk '{print $4}')
+    
+    # For single process, use sequential time as parallel time
+    if [[ -z "$par_time" ]]; then
+        par_time="$seq_time"
+    fi
+    
+    # Extract memory usage
+    local memory_usage=$(grep "Peak memory usage:" "$temp_output" | awk '{print $4}')
+    if [[ -z "$memory_usage" ]]; then
+        memory_usage="N/A"
+    fi
     
     # Extract verification status
     local verified=$(grep "Verification:" "$temp_output" | awk '{print $2}')
@@ -43,21 +58,26 @@ run_benchmark() {
         verified="N/A" # Doesnt verify when single proc
     fi
     
-    # speedup
+    # speedup and efficiency
     local speedup
+    local efficiency
     if (( $(echo "$par_time > 0" | bc -l) )); then
         speedup=$(echo "scale=6; $seq_time / $par_time" | bc -l)
+        efficiency=$(echo "scale=6; $speedup / $num_procs" | bc -l)
     else
         speedup="N/A"
+        efficiency="N/A"
     fi
 
     # Log results to CSV
-    echo "$datatype,$matrix_size,$num_procs,$seq_time,$par_time,$speedup,$verified" >> "$CSV_FILE"
+    echo "$datatype,$matrix_size,$num_procs,$seq_time,$par_time,$speedup,$efficiency,$memory_usage,$verified" >> "$CSV_FILE"
     
     # Display results
     printf "  Sequential Time: %8.6f seconds\n" "$seq_time"
     printf "  Parallel Time:   %8.6f seconds\n" "$par_time"
     printf "  Speedup:         %8.4f\n" "$speedup"
+    printf "  Efficiency:      %8.4f\n" "$efficiency"
+    printf "  Peak Memory:     %8.2f MB\n" "$memory_usage"
     printf "  Verification:    %s\n" "$verified"
     echo ""
     
@@ -65,9 +85,15 @@ run_benchmark() {
 }
 
 # params
-DATATYPES=("float" "double")
-MATRIX_SIZES=(256 512 1024 2048)
-PROCESS_COUNTS=(1 2 4 8 16)
+if [[ "$TEST_MODE" == "true" ]]; then
+    DATATYPES=("float")
+    MATRIX_SIZES=(1024)
+    PROCESS_COUNTS=(2 4)
+else
+    DATATYPES=("float" "double")
+    MATRIX_SIZES=(256 512 1024 2048)
+    PROCESS_COUNTS=(1 2 4 8 16)
+fi
 
 total_tests=0
 completed_tests=0
@@ -92,7 +118,7 @@ for datatype in "${DATATYPES[@]}"; do
     done
 done
 
-echo "__|^|  Benchmark Complete |^|___"
+echo "Benchmark Complete"
 echo "Total tests: $total_tests"
 echo "Completed: $completed_tests"
 echo "Failed: $failed_tests"
